@@ -19,3 +19,25 @@ export type CardFields = Record<CardFieldKey, string>;
 export function emptyCardFields(): CardFields {
   return Object.fromEntries(CARD_FIELDS.map((f) => [f.key, ""])) as CardFields;
 }
+
+// 데이터베이스(cards 표)의 한 줄 모양
+export type CardRow = { id: string } & { [K in keyof CardFields]: string | null } & {
+  memo: string | null;
+  tags: string[] | null;
+  image_path: string | null;
+  image_back_path: string | null;
+  created_at: string;
+};
+
+// 링크로 만들 때 쓰는 도우미들
+export const telHref = (v: string) => `tel:${v.replace(/[^\d+]/g, "")}`;
+export const smsHref = (v: string) => `sms:${v.replace(/[^\d+]/g, "")}`;
+export const webHref = (v: string) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
+export const linkedinHref = (v: string) =>
+  /^https?:\/\//i.test(v)
+    ? v
+    : v.includes("linkedin.com")
+      ? `https://${v}`
+      : `https://www.linkedin.com/in/${v.replace(/^@/, "")}`;
+export const mapHref = (v: string) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v)}`;

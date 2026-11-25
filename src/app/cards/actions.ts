@@ -39,7 +39,7 @@ export async function extractCard(imagePaths: string[]): Promise<ExtractResult> 
 
 export type SaveState = { error?: string } | undefined;
 
-// ② 확인·수정한 내용을 명함 표(cards)에 저장한다.
+// ② 확인·수정한 내용을 명함 표(cards)에 저장한다. (id가 있으면 수정, 없으면 새로 추가)
 export async function saveCard(_prev: SaveState, formData: FormData): Promise<SaveState> {
   const supabase = await createClient();
   const {
@@ -65,6 +65,18 @@ export async function saveCard(_prev: SaveState, formData: FormData): Promise<Sa
     .map((t) => t.trim())
     .filter(Boolean);
 
+  const id = text("id");
+
+  if (id) {
+    // 수정: 사진 위치는 바꾸지 않는다
+    const { error } = await supabase.from("cards").update(row).eq("id", id);
+    if (error) {
+      console.error("updateCard failed:", error);
+      return { error: "저장하지 못했어요. 잠시 후 다시 시도해 주세요." };
+    }
+    redirect(`/cards/${id}`);
+  }
+
   for (const key of ["image_path", "image_back_path"]) {
     const p = text(key);
     row[key] = p && p.startsWith(`${user.id}/`) ? p : null;
@@ -74,6 +86,24 @@ export async function saveCard(_prev: SaveState, formData: FormData): Promise<Sa
   if (error) {
     console.error("saveCard failed:", error);
     return { error: "저장하지 못했어요. 잠시 후 다시 시도해 주세요." };
+  }
+
+  redirect("/cards");
+}
+
+// ③ 명함 삭제: 사진 보관함의 사진도 함께 지운다.
+export async function deleteCard(id: string) {
+  const supabase = await createClient();
+  const { data: card } = await supabase
+    .from("cards")
+    .select("image_path, image_back_path")
+    .eq("id", id)
+    .single();
+
+  if (card) {
+    const files = [card.image_path, card.image_back_path].filter(Boolean) as string[];
+    if (files.length > 0) await supabase.storage.from("card-images").remove(files);
+    await supabase.from("cards").delete().eq("id", id);
   }
 
   redirect("/cards");

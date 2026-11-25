@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { extractCard, saveCard } from "@/app/cards/actions";
-import { CARD_FIELDS, emptyCardFields, type CardFields } from "@/lib/card-fields";
+import { extractCard } from "@/app/cards/actions";
+import CardForm from "@/components/CardForm";
+import { emptyCardFields, type CardFields } from "@/lib/card-fields";
 
 type Step = "pick" | "reading" | "edit";
 
@@ -62,9 +63,6 @@ function PhotoSlot({
   );
 }
 
-const inputClass =
-  "w-full rounded-2xl bg-card px-4 py-3 text-base text-ink outline-none ring-1 ring-latte placeholder:text-ink-faint focus:ring-2 focus:ring-brand";
-
 export default function ScanCard() {
   const [step, setStep] = useState<Step>("pick");
   const [front, setFront] = useState<File | null>(null);
@@ -72,7 +70,6 @@ export default function ScanCard() {
   const [paths, setPaths] = useState<{ front: string; back: string }>({ front: "", back: "" });
   const [fields, setFields] = useState<CardFields>(emptyCardFields());
   const [notice, setNotice] = useState<string | null>(null);
-  const [saveState, saveAction, saving] = useActionState(saveCard, undefined);
 
   // 사진 올리기 → AI로 읽기
   async function handleRead() {
@@ -140,46 +137,7 @@ export default function ScanCard() {
 
   if (step === "edit") {
     return (
-      <form action={saveAction} className="flex flex-col gap-4">
-        {notice && <p className="rounded-2xl bg-latte px-4 py-3 text-sm text-brand-dark">{notice}</p>}
-
-        <input type="hidden" name="image_path" value={paths.front} />
-        <input type="hidden" name="image_back_path" value={paths.back} />
-
-        {CARD_FIELDS.map((f) => (
-          <label key={f.key} className="flex flex-col gap-1">
-            <span className="px-1 text-sm text-ink-soft">{f.label}</span>
-            <input
-              name={f.key}
-              type={f.type}
-              value={fields[f.key]}
-              onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })}
-              className={inputClass}
-            />
-          </label>
-        ))}
-
-        <label className="flex flex-col gap-1">
-          <span className="px-1 text-sm text-ink-soft">그룹·태그 (쉼표로 구분)</span>
-          <input name="tags" placeholder="거래처, 박람회" className={inputClass} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="px-1 text-sm text-ink-soft">메모</span>
-          <textarea name="memo" rows={3} placeholder="11월 박람회에서 만남" className={inputClass} />
-        </label>
-
-        {saveState?.error && (
-          <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{saveState.error}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="mt-2 rounded-full bg-brand py-3 text-base font-medium text-white hover:bg-brand-dark disabled:opacity-60"
-        >
-          {saving ? "저장하는 중…" : "명함 저장"}
-        </button>
-      </form>
+      <CardForm initial={fields} imagePath={paths.front} imageBackPath={paths.back} notice={notice} />
     );
   }
 

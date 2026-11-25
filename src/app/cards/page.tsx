@@ -50,7 +50,8 @@ async function CardList() {
         const display = c.name || c.company || "?";
         const [bg, fg] = pastel(display);
         return (
-          <li key={c.id} className="flex items-center gap-3 rounded-2xl bg-card px-4 py-3">
+          <li key={c.id}>
+            <Link href={`/cards/${c.id}`} className="flex items-center gap-3 rounded-2xl bg-card px-4 py-3 hover:ring-1 hover:ring-latte">
             <span
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-medium"
               style={{ background: bg, color: fg }}
@@ -68,6 +69,7 @@ async function CardList() {
                 {c.tags[0]}
               </span>
             )}
+            </Link>
           </li>
         );
       })}
