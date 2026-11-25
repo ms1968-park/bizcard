@@ -90,13 +90,14 @@ async function CardsView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       {/* 검색창: 엔터(또는 폰 키보드의 '검색')를 누르면 주소가 /cards?q=... 로 바뀐다 */}
       <form action="/cards" className="flex items-center gap-2 rounded-full bg-card px-4 py-2 ring-1 ring-latte focus-within:ring-2 focus-within:ring-brand">
         <span className="text-ink-faint">🔍</span>
         <input
           type="search"
           name="q"
+          size={1}
           defaultValue={q}
           enterKeyHint="search"
           placeholder="이름, 회사, 전화번호, 메모 검색"
@@ -128,7 +129,7 @@ async function CardsView({
       )}
 
       {/* 개수와 정렬 */}
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
         <span className="text-ink-soft">
           {q || tag ? `찾은 명함 ${cards?.length ?? 0}장` : `명함 ${totalCount}장`}
         </span>
@@ -177,7 +178,7 @@ async function CardsView({
                     </p>
                   </div>
                   {c.tags && c.tags.length > 0 && (
-                    <span className="shrink-0 rounded-full bg-latte px-3 py-1 text-xs text-brand-dark">
+                    <span className="max-w-[40%] shrink-0 truncate rounded-full bg-latte px-3 py-1 text-xs text-brand-dark">
                       {c.tags[0]}
                       {c.tags.length > 1 && ` +${c.tags.length - 1}`}
                     </span>
@@ -194,8 +195,8 @@ async function CardsView({
 
 export default function CardsPage({ searchParams }: PageProps<"/cards">) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col gap-6 px-6 py-8 pb-28">
-      <header className="flex items-center justify-between">
+    <main className="mx-auto flex min-h-screen w-full min-w-0 max-w-sm flex-col gap-6 px-5 py-8 pb-28">
+      <header className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-ink">내 명함</h1>
         <form action={logout}>
           <button type="submit" className="rounded-full bg-latte px-4 py-2 text-sm text-brand-dark">
