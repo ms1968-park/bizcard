@@ -10,13 +10,12 @@ export type ExtractResult = { fields: CardFields } | { error: string };
 // ① 보관함에 올린 명함 사진을 AI에게 보여 주고, 칸별 정보를 받아 온다.
 export async function extractCard(imagePaths: string[]): Promise<ExtractResult> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "다시 로그인해 주세요." };
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) return { error: "다시 로그인해 주세요." };
 
   // 내 폴더의 사진만 허용 (보관함 자물쇠도 한 번 더 막아 준다)
-  if (imagePaths.length === 0 || imagePaths.some((p) => !p.startsWith(`${user.id}/`))) {
+  if (imagePaths.length === 0 || imagePaths.some((p) => !p.startsWith(`${userId}/`))) {
     return { error: "사진을 찾을 수 없어요." };
   }
 
@@ -42,10 +41,9 @@ export type SaveState = { error?: string } | undefined;
 // ② 확인·수정한 내용을 명함 표(cards)에 저장한다. (id가 있으면 수정, 없으면 새로 추가)
 export async function saveCard(_prev: SaveState, formData: FormData): Promise<SaveState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "다시 로그인해 주세요." };
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) return { error: "다시 로그인해 주세요." };
 
   const text = (key: string) => {
     const v = String(formData.get(key) ?? "").trim();
@@ -79,7 +77,7 @@ export async function saveCard(_prev: SaveState, formData: FormData): Promise<Sa
 
   for (const key of ["image_path", "image_back_path"]) {
     const p = text(key);
-    row[key] = p && p.startsWith(`${user.id}/`) ? p : null;
+    row[key] = p && p.startsWith(`${userId}/`) ? p : null;
   }
 
   const { error } = await supabase.from("cards").insert(row);

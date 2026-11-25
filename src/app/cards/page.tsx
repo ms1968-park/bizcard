@@ -50,10 +50,8 @@ async function CardsView({
   const sort: SortKey = pick(sp.sort) in SORTS ? (pick(sp.sort) as SortKey) : "recent";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const { data: auth } = await supabase.auth.getClaims();
+  if (!auth?.claims) redirect("/login");
 
   // 1) 내가 쓴 태그 모음 (태그 버튼을 만들기 위해)
   const { data: tagRows } = await supabase.from("cards").select("tags");

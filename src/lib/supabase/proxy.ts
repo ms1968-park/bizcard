@@ -31,9 +31,9 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 손목 밴드(JWT)의 도장을 그 자리에서 확인한다. (매번 Supabase에 물어보지 않아서 빠르다)
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims;
 
   const path = request.nextUrl.pathname;
 

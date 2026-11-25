@@ -78,10 +78,9 @@ export default function ScanCard() {
     setNotice(null);
 
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    const { data: auth } = await supabase.auth.getClaims();
+    const userId = auth?.claims?.sub;
+    if (!userId) {
       setNotice("다시 로그인해 주세요.");
       setStep("pick");
       return;
@@ -91,7 +90,7 @@ export default function ScanCard() {
     async function upload(file: File, side: string) {
       const blob = await shrinkImage(file);
       const ext = blob.type === "image/jpeg" ? "jpg" : (file.name.split(".").pop() ?? "jpg");
-      const path = `${user!.id}/${crypto.randomUUID()}-${side}.${ext}`;
+      const path = `${userId}/${crypto.randomUUID()}-${side}.${ext}`;
       const { error } = await supabase.storage
         .from("card-images")
         .upload(path, blob, { contentType: blob.type || "image/jpeg" });
