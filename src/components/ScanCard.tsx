@@ -1,0 +1,203 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { extractCard, saveCard } from "@/app/cards/actions";
+import { CARD_FIELDS, emptyCardFields, type CardFields } from "@/lib/card-fields";
+
+type Step = "pick" | "reading" | "edit";
+
+// 사진을 가로·세로 최대 1600px의 JPEG로 줄인다. (빠르게 올리고, 5MB 제한도 지키기)
+async function shrinkImage(file: File): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject()), "image/jpeg", 0.85),
+    );
+  } catch {
+    return file; // 줄이기에 실패하면 원본 그대로
+  }
+}
+
+function PhotoSlot({
+  label,
+  hint,
+  file,
+  onPick,
+}: {
+  label: string;
+  hint: string;
+  file: File | null;
+  onPick: (f: File | null) => void;
+}) {
+  const preview = file ? URL.createObjectURL(file) : null;
+  return (
+    <label className="flex cursor-pointer flex-col gap-2">
+      <span className="text-sm font-medium text-ink">
+        {label} <span className="font-normal text-ink-soft">{hint}</span>
+      </span>
+      <div className="flex aspect-[1.75] items-center justify-center overflow-hidden rounded-3xl bg-card ring-1 ring-latte">
+        {preview ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={preview} alt={label} className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex flex-col items-center gap-1 text-ink-faint">
+            <span className="text-3xl">📷</span>
+            <span className="text-sm">눌러서 촬영하거나 사진 고르기</span>
+          </span>
+        )}
+      </div>
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+      />
+    </label>
+  );
+}
+
+const inputClass =
+  "w-full rounded-2xl bg-card px-4 py-3 text-base text-ink outline-none ring-1 ring-latte placeholder:text-ink-faint focus:ring-2 focus:ring-brand";
+
+export default function ScanCard() {
+  const [step, setStep] = useState<Step>("pick");
+  const [front, setFront] = useState<File | null>(null);
+  const [back, setBack] = useState<File | null>(null);
+  const [paths, setPaths] = useState<{ front: string; back: string }>({ front: "", back: "" });
+  const [fields, setFields] = useState<CardFields>(emptyCardFields());
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saveState, saveAction, saving] = useActionState(saveCard, undefined);
+
+  // 사진 올리기 → AI로 읽기
+  async function handleRead() {
+    if (!front) return;
+    setStep("reading");
+    setNotice(null);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setNotice("다시 로그인해 주세요.");
+      setStep("pick");
+      return;
+    }
+
+    // 1) 사진 보관함에 올리기: card-images/내ID/무작위이름.jpg
+    async function upload(file: File, side: string) {
+      const blob = await shrinkImage(file);
+      const ext = blob.type === "image/jpeg" ? "jpg" : (file.name.split(".").pop() ?? "jpg");
+      const path = `${user!.id}/${crypto.randomUUID()}-${side}.${ext}`;
+      const { error } = await supabase.storage
+        .from("card-images")
+        .upload(path, blob, { contentType: blob.type || "image/jpeg" });
+      if (error) throw error;
+      return path;
+    }
+
+    let uploaded: { front: string; back: string };
+    try {
+      uploaded = {
+        front: await upload(front, "front"),
+        back: back ? await upload(back, "back") : "",
+      };
+    } catch (e) {
+      console.error(e);
+      setNotice("사진을 올리지 못했어요. 다시 시도해 주세요.");
+      setStep("pick");
+      return;
+    }
+    setPaths(uploaded);
+
+    // 2) 서버에 "이 사진들 읽어 줘" 요청
+    const result = await extractCard([uploaded.front, uploaded.back].filter(Boolean));
+    if ("error" in result) {
+      setNotice(result.error);
+      setFields(emptyCardFields());
+    } else {
+      setFields(result.fields);
+      setNotice("AI가 읽은 내용이에요. 틀린 곳이 있으면 고쳐 주세요.");
+    }
+    setStep("edit");
+  }
+
+  if (step === "reading") {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
+        <span className="animate-bounce text-5xl">☕</span>
+        <p className="text-lg text-ink">명함을 읽고 있어요…</p>
+        <p className="text-sm text-ink-soft">보통 몇 초면 끝나요.</p>
+      </div>
+    );
+  }
+
+  if (step === "edit") {
+    return (
+      <form action={saveAction} className="flex flex-col gap-4">
+        {notice && <p className="rounded-2xl bg-latte px-4 py-3 text-sm text-brand-dark">{notice}</p>}
+
+        <input type="hidden" name="image_path" value={paths.front} />
+        <input type="hidden" name="image_back_path" value={paths.back} />
+
+        {CARD_FIELDS.map((f) => (
+          <label key={f.key} className="flex flex-col gap-1">
+            <span className="px-1 text-sm text-ink-soft">{f.label}</span>
+            <input
+              name={f.key}
+              type={f.type}
+              value={fields[f.key]}
+              onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })}
+              className={inputClass}
+            />
+          </label>
+        ))}
+
+        <label className="flex flex-col gap-1">
+          <span className="px-1 text-sm text-ink-soft">그룹·태그 (쉼표로 구분)</span>
+          <input name="tags" placeholder="거래처, 박람회" className={inputClass} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="px-1 text-sm text-ink-soft">메모</span>
+          <textarea name="memo" rows={3} placeholder="11월 박람회에서 만남" className={inputClass} />
+        </label>
+
+        {saveState?.error && (
+          <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{saveState.error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="mt-2 rounded-full bg-brand py-3 text-base font-medium text-white hover:bg-brand-dark disabled:opacity-60"
+        >
+          {saving ? "저장하는 중…" : "명함 저장"}
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PhotoSlot label="앞면" hint="(필수)" file={front} onPick={setFront} />
+      <PhotoSlot label="뒷면" hint="(선택)" file={back} onPick={setBack} />
+      {notice && (
+        <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{notice}</p>
+      )}
+      <button
+        type="button"
+        onClick={handleRead}
+        disabled={!front}
+        className="rounded-full bg-brand py-3 text-base font-medium text-white hover:bg-brand-dark disabled:opacity-40"
+      >
+        AI로 명함 읽기
+      </button>
+    </div>
+  );
+}
