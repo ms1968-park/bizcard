@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractCard } from "@/app/cards/actions";
 import CardForm from "@/components/CardForm";
@@ -83,7 +83,7 @@ function PhotoSlot({
   );
 }
 
-export default function ScanCard() {
+function ScanFlow() {
   const [step, setStep] = useState<Step>("pick");
   const [front, setFront] = useState<File | null>(null);
   const [back, setBack] = useState<File | null>(null);
@@ -96,6 +96,18 @@ export default function ScanCard() {
   const [warped, setWarped] = useState<{ blob: Blob; url: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [warpError, setWarpError] = useState<string | null>(null);
+  const uploadedRef = useRef<string[]>([]); // 이번 스캔에서 올린 사진들
+  const submittedRef = useRef(false); // [명함 저장]을 눌렀는지
+
+  // 이 화면이 사라질 때(목록으로 나가는 등), 저장하지 않았다면 올렸던 사진을 지운다
+  useEffect(() => {
+    return () => {
+      const paths = uploadedRef.current;
+      if (!submittedRef.current && paths.length > 0) {
+        createClient().storage.from("card-images").remove(paths);
+      }
+    };
+  }, []);
 
   // 스캔 화면을 열자마자 보조 일꾼에게 OpenCV를 미리 준비시킨다 (화면은 멈추지 않는다)
   useEffect(() => {
@@ -142,6 +154,7 @@ export default function ScanCard() {
       return;
     }
     setPaths(uploaded);
+    uploadedRef.current = [uploaded.front, uploaded.back].filter(Boolean);
 
     // 2) 동시에 두 가지: 서버(Gemini)는 글자 읽기, 브라우저(OpenCV)는 명함 꼭짓점 찾기
     const files = [front, ...(back ? [back] : [])];
@@ -333,7 +346,13 @@ export default function ScanCard() {
             ))}
           </div>
         )}
-        <CardForm initial={fields} imagePath={paths.front} imageBackPath={paths.back} notice={notice} />
+        <CardForm
+          initial={fields}
+          imagePath={paths.front}
+          imageBackPath={paths.back}
+          notice={notice}
+          onSubmitStart={() => (submittedRef.current = true)}
+        />
       </div>
     );
   }
@@ -358,4 +377,14 @@ export default function ScanCard() {
       </button>
     </div>
   );
+}
+
+// Next.js는 다른 화면으로 가도 이 화면을 지우지 않고 숨겨 둔다 (뒤로 가기 때 되살리려고).
+// 스캔은 매번 새로 시작해야 하므로, 숨겨지는 순간 열쇠(key)를 바꿔 ScanFlow를 새로 만든다.
+export default function ScanCard() {
+  const [run, setRun] = useState(0);
+  useLayoutEffect(() => {
+    return () => setRun((n) => n + 1);
+  }, []);
+  return <ScanFlow key={run} />;
 }

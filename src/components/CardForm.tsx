@@ -15,6 +15,7 @@ type Props = {
   imagePath?: string;
   imageBackPath?: string;
   notice?: string | null;
+  onSubmitStart?: () => void; // [저장]을 누른 순간 알려 주기
 };
 
 // 명함 정보 입력 양식 (스캔 후 확인할 때, 수정할 때 함께 쓴다)
@@ -26,12 +27,13 @@ export default function CardForm({
   imagePath = "",
   imageBackPath = "",
   notice,
+  onSubmitStart,
 }: Props) {
   const [fields, setFields] = useState<CardFields>(initial);
   const [state, action, pending] = useActionState(saveCard, undefined);
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} onSubmit={() => onSubmitStart?.()} className="flex flex-col gap-4">
       {notice && <p className="rounded-2xl bg-latte px-4 py-3 text-sm text-brand-dark">{notice}</p>}
 
       {cardId && <input type="hidden" name="id" value={cardId} />}
