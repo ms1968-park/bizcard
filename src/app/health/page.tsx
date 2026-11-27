@@ -16,22 +16,29 @@ async function SupabaseStatus() {
     );
   }
 
+  // 먼저 결과만 알아내고, 화면(JSX)은 try/catch 밖에서 만든다
+  let status: number | "network-error";
   try {
     const res = await fetch(`${url}/auth/v1/settings`, {
       headers: { apikey: key },
       cache: "no-store",
     });
-    if (res.ok) {
-      return <p className="text-green-700">✅ Supabase에 연결됐어요!</p>;
-    }
-    return (
-      <p className="text-red-600">
-        ❌ 연결은 됐지만 거절당했어요. (응답 코드 {res.status}) 열쇠를 확인하세요.
-      </p>
-    );
+    status = res.status;
   } catch {
+    status = "network-error";
+  }
+
+  if (status === "network-error") {
     return <p className="text-red-600">❌ Supabase 주소에 접속하지 못했어요.</p>;
   }
+  if (status >= 200 && status < 300) {
+    return <p className="text-green-700">✅ Supabase에 연결됐어요!</p>;
+  }
+  return (
+    <p className="text-red-600">
+      ❌ 연결은 됐지만 거절당했어요. (응답 코드 {status}) 열쇠를 확인하세요.
+    </p>
+  );
 }
 
 export default function HealthPage() {

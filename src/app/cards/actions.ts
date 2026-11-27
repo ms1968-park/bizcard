@@ -19,6 +19,18 @@ export async function extractCard(imagePaths: string[]): Promise<ExtractResult> 
     return { error: "사진을 찾을 수 없어요." };
   }
 
+  // 남용 방지: 최근 1시간 동안 올린 사진이 너무 많으면 잠시 쉬게 한다 (AI 요금 보호)
+  const { data: recent } = await supabase.storage
+    .from("card-images")
+    .list(userId, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const recentCount = (recent ?? []).filter(
+    (f) => f.created_at && new Date(f.created_at).getTime() > oneHourAgo,
+  ).length;
+  if (recentCount > 60) {
+    return { error: "짧은 시간에 너무 많이 스캔했어요. 1시간 뒤에 다시 시도해 주세요." };
+  }
+
   try {
     const images = await Promise.all(
       imagePaths.map(async (path) => {
