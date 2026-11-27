@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import DeleteCardButton from "@/components/DeleteCardButton";
+import CardPhotos from "@/components/CardPhotos";
 import {
   CARD_FIELDS,
   linkedinHref,
@@ -72,20 +73,12 @@ async function CardDetail({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {photos.length > 0 && (
-        <div className="flex snap-x gap-3 overflow-x-auto">
-          {photos.map((p, i) =>
-            p.signedUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={p.path ?? i}
-                src={p.signedUrl}
-                alt={i === 0 ? "명함 앞면" : "명함 뒷면"}
-                className="aspect-[1.75] w-full shrink-0 snap-center rounded-3xl object-cover"
-              />
-            ) : null,
-          )}
-        </div>
+      {photos.some((p) => p.signedUrl) && (
+        <CardPhotos
+          photos={photos
+            .map((p, i) => ({ url: p.signedUrl ?? "", label: i === 0 ? "앞면" : "뒷면" }))
+            .filter((p) => p.url)}
+        />
       )}
 
       <div className="text-center">

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { extractCard } from "@/app/cards/actions";
 import CardForm from "@/components/CardForm";
 import { emptyCardFields, type CardFields } from "@/lib/card-fields";
+import { warpCard } from "@/lib/perspective";
 
 type Step = "pick" | "reading" | "edit";
 
@@ -70,6 +71,7 @@ export default function ScanCard() {
   const [paths, setPaths] = useState<{ front: string; back: string }>({ front: "", back: "" });
   const [fields, setFields] = useState<CardFields>(emptyCardFields());
   const [notice, setNotice] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<string[]>([]);
 
   // 사진 올리기 → AI로 읽기
   async function handleRead() {
@@ -114,12 +116,35 @@ export default function ScanCard() {
 
     // 2) 서버에 "이 사진들 읽어 줘" 요청
     const result = await extractCard([uploaded.front, uploaded.back].filter(Boolean));
+    const sides = [
+      { file: front, path: uploaded.front },
+      ...(back ? [{ file: back, path: uploaded.back }] : []),
+    ];
+
     if ("error" in result) {
       setNotice(result.error);
       setFields(emptyCardFields());
+      setPreviews(sides.map((s) => URL.createObjectURL(s.file)));
     } else {
       setFields(result.fields);
       setNotice("AI가 읽은 내용이에요. 틀린 곳이 있으면 고쳐 주세요.");
+
+      // 3) 명함 부분만 똑바로 펴서, 보관함의 사진을 보정한 사진으로 바꾸기
+      const urls: string[] = [];
+      for (const [i, side] of sides.entries()) {
+        const crop = result.crops[i];
+        // 꼭짓점을 찾았으면 원근 보정으로 펴기 (실패하면 원래 사진 그대로)
+        const cropped = crop ? await warpCard(side.file, crop.corners).catch(() => null) : null;
+        if (cropped) {
+          const { error } = await supabase.storage
+            .from("card-images")
+            .upload(side.path, cropped, { contentType: "image/jpeg", upsert: true });
+          urls.push(URL.createObjectURL(error ? side.file : cropped));
+        } else {
+          urls.push(URL.createObjectURL(side.file));
+        }
+      }
+      setPreviews(urls);
     }
     setStep("edit");
   }
@@ -128,7 +153,7 @@ export default function ScanCard() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
         <span className="animate-bounce text-5xl">☕</span>
-        <p className="text-lg text-ink">명함을 읽고 있어요…</p>
+        <p className="text-lg text-ink">명함을 읽고 다듬는 중이에요…</p>
         <p className="text-sm text-ink-soft">보통 몇 초면 끝나요.</p>
       </div>
     );
@@ -136,7 +161,22 @@ export default function ScanCard() {
 
   if (step === "edit") {
     return (
-      <CardForm initial={fields} imagePath={paths.front} imageBackPath={paths.back} notice={notice} />
+      <div className="flex flex-col gap-4">
+        {previews.length > 0 && (
+          <div className="flex gap-2">
+            {previews.map((url, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={url}
+                src={url}
+                alt={i === 0 ? "앞면" : "뒷면"}
+                className="max-h-40 min-w-0 flex-1 rounded-2xl bg-latte object-contain"
+              />
+            ))}
+          </div>
+        )}
+        <CardForm initial={fields} imagePath={paths.front} imageBackPath={paths.back} notice={notice} />
+      </div>
     );
   }
 
