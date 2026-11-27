@@ -84,15 +84,15 @@
 
 ## 🖼 화면
 
-> 📌 화면 캡처는 `docs/screenshots/` 폴더에 있습니다.
+> 📌 화면 캡처에 나오는 명함은 모두 **테스트용 가상 명함**입니다. 실제 인물이나 연락처가 아닙니다.
 
-| 첫 화면 | 명함 목록 | 명함 스캔 |
+| 로그인 | 명함 목록 | 명함 스캔 (앞·뒷면) |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/01-home.png" width="220" alt="첫 화면" /> | <img src="docs/screenshots/02-list.png" width="220" alt="명함 목록" /> | <img src="docs/screenshots/03-scan.png" width="220" alt="명함 스캔" /> |
+| <img src="docs/screenshots/01-home.png" width="220" alt="로그인" /> | <img src="docs/screenshots/02-list.png" width="220" alt="명함 목록" /> | <img src="docs/screenshots/03-scan.png" width="220" alt="명함 스캔" /> |
 
-| 꼭짓점 맞추기 | 보정 결과 | 명함 상세 |
+| 꼭짓점 맞추기 | 원근 보정 결과 | AI가 읽은 정보 확인 |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/04-adjust.png" width="220" alt="꼭짓점 맞추기" /> | <img src="docs/screenshots/05-warped.png" width="220" alt="보정 결과" /> | <img src="docs/screenshots/06-detail.png" width="220" alt="명함 상세" /> |
+| <img src="docs/screenshots/04-adjust.png" width="220" alt="꼭짓점 맞추기" /> | <img src="docs/screenshots/05-warped.png" width="220" alt="원근 보정 결과" /> | <img src="docs/screenshots/06-detail.png" width="220" alt="AI가 읽은 정보 확인" /> |
 
 ---
 
@@ -331,7 +331,8 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxx
 GEMINI_API_KEY=xxxx            # 서버 전용, NEXT_PUBLIC_ 붙이지 않기
 ```
 
-3. 실행합니다.
+3. (선택) 테스트용 가상 명함 [`docs/sample-cards/print_A4.pdf`](docs/sample-cards/print_A4.pdf)를 A4 용지에 실제 크기로 인쇄하면, 실제 명함처럼 촬영해서 시험할 수 있습니다.
+4. 실행합니다.
 
 ```bash
 npm run dev
