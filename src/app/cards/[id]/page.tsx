@@ -141,6 +141,13 @@ async function CardDetail({ params }: { params: Promise<{ id: string }> }) {
         </div>
       )}
 
+      <a
+        href={`/cards/${card.id}/vcard`}
+        className="flex items-center justify-center gap-2 rounded-full bg-card py-3 font-medium text-brand ring-1 ring-latte"
+      >
+        📲 휴대폰 연락처에 저장
+      </a>
+
       <div className="flex flex-col gap-2">
         <Link href={`/cards/${card.id}/edit`} className="rounded-full bg-brand py-3 text-center font-medium text-white hover:bg-brand-dark">
           수정하기
