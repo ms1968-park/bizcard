@@ -16,13 +16,6 @@ export const CARD_FIELDS = [
 export type CardFieldKey = (typeof CARD_FIELDS)[number]["key"];
 export type CardFields = Record<CardFieldKey, string>;
 
-// 사진 속 명함의 네 꼭짓점 (Gemini가 찾아 주고, 사용자가 다듬을 수 있음)
-// 각 점은 [y, x], 사진 크기를 0~1로 본 비율 좌표
-// 순서: 명함 글자 기준 좌상단, 우상단, 우하단, 좌하단
-export type CardCrop = {
-  corners: number[][];
-};
-
 export function emptyCardFields(): CardFields {
   return Object.fromEntries(CARD_FIELDS.map((f) => [f.key, ""])) as CardFields;
 }

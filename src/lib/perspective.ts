@@ -35,7 +35,12 @@ function homography(from: Pt[], to: Pt[]): number[] {
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // 사진(File)과 네 꼭짓점(0~1 비율, [y,x], 좌상·우상·우하·좌하)을 받아 펴진 명함 사진을 만든다.
-export async function warpCard(file: Blob, corners: number[][], maxSide = 1600): Promise<Blob> {
+export async function warpCard(
+  file: Blob,
+  corners: number[][],
+  maxSide = 1600,
+  checkRatio = false, // true면 명함 비율이 아닐 때 펴지 않는다 (자동 보정용)
+): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
 
   // 1) 원본이 너무 크면 계산이 느리므로 먼저 적당히 줄인다
@@ -56,6 +61,13 @@ export async function warpCard(file: Blob, corners: number[][], maxSide = 1600):
   // 3) 펴진 명함의 가로·세로 길이 (위아래, 좌우 변 길이의 평균)
   let outW = (dist(tl, tr) + dist(bl, br)) / 2;
   let outH = (dist(tl, bl) + dist(tr, br)) / 2;
+
+  // 명함은 보통 가로:세로가 약 1.6~1.8 (세로형 명함은 그 반대).
+  // 비율이 너무 다르면 꼭짓점을 잘못 찾은 것으로 보고 보정하지 않는다.
+  const ratio = Math.max(outW, outH) / Math.min(outW, outH);
+  if (checkRatio && (!Number.isFinite(ratio) || ratio < 1.2 || ratio > 2.4)) {
+    throw new Error(`명함 비율이 아니에요 (${ratio.toFixed(2)})`);
+  }
   const s = Math.min(1, maxSide / Math.max(outW, outH));
   outW = Math.max(1, Math.round(outW * s));
   outH = Math.max(1, Math.round(outH * s));
@@ -112,5 +124,21 @@ export async function warpCard(file: Blob, corners: number[][], maxSide = 1600):
 
   return await new Promise<Blob>((resolve, reject) =>
     outCanvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.9),
+  );
+}
+
+// 사진을 시계 방향으로 90도씩 돌린다
+export async function rotateBlob(blob: Blob, degrees: 90 | 180 | 270): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  const turned = degrees !== 180;
+  const canvas = document.createElement("canvas");
+  canvas.width = turned ? bitmap.height : bitmap.width;
+  canvas.height = turned ? bitmap.width : bitmap.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  return await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.92),
   );
 }

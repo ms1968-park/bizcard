@@ -1,13 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractCard } from "@/app/cards/actions";
 import CardForm from "@/components/CardForm";
 import { emptyCardFields, type CardFields } from "@/lib/card-fields";
-import { warpCard } from "@/lib/perspective";
+import { rotateBlob, warpCard } from "@/lib/perspective";
+import CornerAdjuster from "@/components/CornerAdjuster";
+import { detectCardCorners, stopOpenCV, warmUpOpenCV } from "@/lib/opencv";
 
-type Step = "pick" | "reading" | "edit";
+type Step = "pick" | "reading" | "adjust" | "preview" | "edit";
+
+// 앞면·뒷면 한 장의 정보
+type Side = {
+  label: string;
+  file: File; // 원본 사진
+  url: string; // 원본 미리보기 주소
+  path: string; // 보관함 위치
+  corners: number[][]; // 손잡이 위치 [y, x] 비율 좌표
+};
+
+// OpenCV가 꼭짓점을 못 찾았을 때 손잡이의 처음 위치 (가장자리에서 10% 안쪽)
+const DEFAULT_CORNERS = [
+  [0.1, 0.1],
+  [0.1, 0.9],
+  [0.9, 0.9],
+  [0.9, 0.1],
+];
 
 // 사진을 가로·세로 최대 1600px의 JPEG로 줄인다. (빠르게 올리고, 5MB 제한도 지키기)
 async function shrinkImage(file: File): Promise<Blob> {
@@ -72,6 +91,16 @@ export default function ScanCard() {
   const [fields, setFields] = useState<CardFields>(emptyCardFields());
   const [notice, setNotice] = useState<string | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [sides, setSides] = useState<Side[]>([]);
+  const [sideIndex, setSideIndex] = useState(0);
+  const [warped, setWarped] = useState<{ blob: Blob; url: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [warpError, setWarpError] = useState<string | null>(null);
+
+  // 스캔 화면을 열자마자 보조 일꾼에게 OpenCV를 미리 준비시킨다 (화면은 멈추지 않는다)
+  useEffect(() => {
+    warmUpOpenCV();
+  }, []);
 
   // 사진 올리기 → AI로 읽기
   async function handleRead() {
@@ -114,47 +143,176 @@ export default function ScanCard() {
     }
     setPaths(uploaded);
 
-    // 2) 서버에 "이 사진들 읽어 줘" 요청
-    const result = await extractCard([uploaded.front, uploaded.back].filter(Boolean));
-    const sides = [
-      { file: front, path: uploaded.front },
-      ...(back ? [{ file: back, path: uploaded.back }] : []),
+    // 2) 동시에 두 가지: 서버(Gemini)는 글자 읽기, 브라우저(OpenCV)는 명함 꼭짓점 찾기
+    const files = [front, ...(back ? [back] : [])];
+    const findCorners = (file: File) =>
+      Promise.race([
+        detectCardCorners(file).catch((e) => {
+          console.warn("꼭짓점 찾기 실패:", e);
+          return null;
+        }),
+        new Promise<null>((resolve) =>
+          setTimeout(() => {
+            stopOpenCV(); // 20초 넘으면 일꾼을 멈추고 포기
+            resolve(null);
+          }, 20_000),
+        ),
+      ]);
+    const [result, detected] = await Promise.all([
+      extractCard([uploaded.front, uploaded.back].filter(Boolean)),
+      Promise.all(files.map(findCorners)),
+    ]);
+    const list = [
+      { label: "앞면", file: front, path: uploaded.front },
+      ...(back ? [{ label: "뒷면", file: back, path: uploaded.back }] : []),
     ];
 
     if ("error" in result) {
       setNotice(result.error);
       setFields(emptyCardFields());
-      setPreviews(sides.map((s) => URL.createObjectURL(s.file)));
     } else {
       setFields(result.fields);
       setNotice("AI가 읽은 내용이에요. 틀린 곳이 있으면 고쳐 주세요.");
-
-      // 3) 명함 부분만 똑바로 펴서, 보관함의 사진을 보정한 사진으로 바꾸기
-      const urls: string[] = [];
-      for (const [i, side] of sides.entries()) {
-        const crop = result.crops[i];
-        // 꼭짓점을 찾았으면 원근 보정으로 펴기 (실패하면 원래 사진 그대로)
-        const cropped = crop ? await warpCard(side.file, crop.corners).catch(() => null) : null;
-        if (cropped) {
-          const { error } = await supabase.storage
-            .from("card-images")
-            .upload(side.path, cropped, { contentType: "image/jpeg", upsert: true });
-          urls.push(URL.createObjectURL(error ? side.file : cropped));
-        } else {
-          urls.push(URL.createObjectURL(side.file));
-        }
-      }
-      setPreviews(urls);
     }
-    setStep("edit");
+
+    // 3) 다음 화면: 사진마다 꼭짓점 맞추기 (OpenCV가 찾은 위치에서 시작)
+    setSides(
+      list.map((side, i) => ({
+        ...side,
+        url: URL.createObjectURL(side.file),
+        corners: detected[i] ?? DEFAULT_CORNERS,
+      })),
+    );
+    setSideIndex(0);
+    setPreviews([]);
+    setStep("adjust");
+  }
+
+  // 한 면을 끝내고 다음 면(또는 정보 확인 화면)으로
+  function finishSide(previewUrl: string) {
+    setPreviews((prev) => [...prev, previewUrl]);
+    setWarped(null);
+    if (sideIndex + 1 < sides.length) {
+      setSideIndex(sideIndex + 1);
+      setStep("adjust");
+    } else {
+      setStep("edit");
+    }
+  }
+
+  // [반듯하게 펴기]
+  async function handleApply(corners: number[][]) {
+    const side = sides[sideIndex];
+    setSides((prev) => prev.map((s, i) => (i === sideIndex ? { ...s, corners } : s)));
+    setBusy(true);
+    setWarpError(null);
+    try {
+      const blob = await warpCard(side.file, corners);
+      setWarped({ blob, url: URL.createObjectURL(blob) });
+      setStep("preview");
+    } catch (e) {
+      console.error(e);
+      setWarpError("사진을 펴지 못했어요. 손잡이 위치를 확인하거나 원본을 써 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // [↻ 돌리기]
+  async function handleRotate() {
+    if (!warped) return;
+    setBusy(true);
+    const blob = await rotateBlob(warped.blob, 90);
+    setWarped({ blob, url: URL.createObjectURL(blob) });
+    setBusy(false);
+  }
+
+  // [이 사진 쓰기]: 보관함의 사진을 펴진 사진으로 바꾼다
+  async function handleUseWarped() {
+    if (!warped) return;
+    setBusy(true);
+    const supabase = createClient();
+    const { error } = await supabase.storage
+      .from("card-images")
+      .upload(sides[sideIndex].path, warped.blob, { contentType: "image/jpeg", upsert: true });
+    setBusy(false);
+    if (error) {
+      console.error(error);
+      setNotice("보정한 사진을 저장하지 못해서 원본을 쓸게요.");
+      finishSide(sides[sideIndex].url);
+      return;
+    }
+    finishSide(warped.url);
   }
 
   if (step === "reading") {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
         <span className="animate-bounce text-5xl">☕</span>
-        <p className="text-lg text-ink">명함을 읽고 다듬는 중이에요…</p>
+        <p className="text-lg text-ink">명함을 읽고 있어요…</p>
         <p className="text-sm text-ink-soft">보통 몇 초면 끝나요.</p>
+      </div>
+    );
+  }
+
+  if (step === "adjust" && sides[sideIndex]) {
+    const side = sides[sideIndex];
+    return (
+      <div className="flex flex-col gap-3">
+        {sides.length > 1 && (
+          <p className="text-center text-sm font-medium text-brand">
+            {side.label} ({sideIndex + 1}/{sides.length})
+          </p>
+        )}
+        {warpError && (
+          <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{warpError}</p>
+        )}
+        <CornerAdjuster
+          key={side.path}
+          imageUrl={side.url}
+          initial={side.corners}
+          busy={busy}
+          onApply={handleApply}
+          onSkip={() => finishSide(side.url)}
+        />
+      </div>
+    );
+  }
+
+  if (step === "preview" && warped) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-center text-sm text-ink-soft">
+          반듯하게 폈어요. 글자가 똑바로 보이지 않으면 <b className="text-ink">↻ 돌리기</b>를 눌러 주세요.
+        </p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={warped.url} alt="펴진 명함" className="max-h-96 w-full rounded-2xl bg-latte object-contain" />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setStep("adjust")}
+            disabled={busy}
+            className="flex-1 rounded-full bg-latte py-3 text-sm font-medium text-brand-dark disabled:opacity-60"
+          >
+            다시 맞추기
+          </button>
+          <button
+            type="button"
+            onClick={handleRotate}
+            disabled={busy}
+            className="flex-1 rounded-full bg-latte py-3 text-sm font-medium text-brand-dark disabled:opacity-60"
+          >
+            ↻ 돌리기
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={handleUseWarped}
+          disabled={busy}
+          className="rounded-full bg-brand py-3 text-base font-medium text-white hover:bg-brand-dark disabled:opacity-60"
+        >
+          {busy ? "잠시만요…" : "이 사진 쓰기"}
+        </button>
       </div>
     );
   }
@@ -184,6 +342,9 @@ export default function ScanCard() {
     <div className="flex flex-col gap-5">
       <PhotoSlot label="앞면" hint="(필수)" file={front} onPick={setFront} />
       <PhotoSlot label="뒷면" hint="(선택)" file={back} onPick={setBack} />
+      <p className="text-center text-xs leading-relaxed text-ink-faint">
+        💡 명함 네 모서리가 모두 보이게, 밝은 곳에서 찍으면 더 정확해요.
+      </p>
       {notice && (
         <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{notice}</p>
       )}
