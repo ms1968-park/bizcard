@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
     if (!error) return NextResponse.redirect(`${origin}/cards`);
   } else if (tokenHash && type) {
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) return NextResponse.redirect(`${origin}/cards`);
+    if (!error) {
+      // 비밀번호 재설정 메일에서 왔으면 새 비밀번호 화면으로, 아니면 명함 목록으로
+      const next = type === "recovery" ? "/reset-password" : "/cards";
+      return NextResponse.redirect(`${origin}${next}`);
+    }
   }
 
   return NextResponse.redirect(`${origin}/login?error=confirm`);

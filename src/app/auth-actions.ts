@@ -75,3 +75,49 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+// 비밀번호 재설정 메일 보내기
+export async function requestPasswordReset(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "이메일을 입력해 주세요." };
+
+  const origin = (await headers()).get("origin") ?? "";
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/confirm`,
+  });
+
+  if (error && error.message.toLowerCase().includes("rate limit")) {
+    return { error: "요청이 너무 많아요. 잠시 후 다시 시도해 주세요." };
+  }
+
+  // 가입된 이메일인지 아닌지는 알려 주지 않는다. (누가 어떤 이메일로 가입했는지 캐내지 못하게)
+  return {
+    message: `${email}이(가) 가입된 이메일이라면 비밀번호 재설정 메일을 보냈어요. 메일함을 확인해 주세요.`,
+  };
+}
+
+// 새 비밀번호로 바꾸기 (재설정 메일의 링크를 눌러 들어온 상태에서)
+export async function updatePassword(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  const password = String(formData.get("password") ?? "");
+  const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
+
+  if (password.length < 6) return { error: "비밀번호는 6자 이상으로 입력해 주세요." };
+  if (password !== passwordConfirm) return { error: "비밀번호가 서로 달라요." };
+
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  if (!auth?.claims) {
+    return { error: "링크가 만료됐어요. 비밀번호 찾기를 다시 해 주세요." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    if (error.message.toLowerCase().includes("different")) {
+      return { error: "이전과 다른 비밀번호를 입력해 주세요." };
+    }
+    return { error: toKorean(error.message) };
+  }
+
+  redirect("/cards");
+}

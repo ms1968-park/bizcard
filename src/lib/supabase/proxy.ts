@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // 로그인이 필요한 주소들
 const PROTECTED = ["/cards"];
 // 이미 로그인했다면 다시 볼 필요 없는 주소들
-const AUTH_PAGES = ["/login", "/signup"];
+const AUTH_PAGES = ["/login", "/signup", "/forgot-password"];
 
 // 모든 요청이 화면에 도착하기 전에 거치는 "입구 직원".
 // 1) 손목 밴드(출입증)가 낡았으면 새것으로 갈아 주고
