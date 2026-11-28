@@ -30,8 +30,11 @@ export default function GoogleButton() {
         type="button"
         onClick={handleClick}
         disabled={pending}
-        className="flex items-center justify-center gap-2 rounded-full bg-card py-3 text-base font-medium text-ink ring-1 ring-latte hover:ring-brand disabled:opacity-60"
+        className="flex items-center justify-center gap-2.5 rounded-full bg-white py-3 text-base font-medium text-ink ring-1 ring-latte hover:ring-brand disabled:opacity-60"
       >
+        {/* 구글 공식 "G" 로고 (Google 브랜드 가이드라인 다운로드 파일, public/google-g.svg) */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/google-g.svg" alt="" width={20} height={20} className="h-5 w-5" />
         {pending ? "구글로 이동하는 중…" : "Google로 계속하기"}
       </button>
       {error && <p className="rounded-2xl bg-[#fbe3d6] px-4 py-3 text-sm text-[#9a4a2a]">{error}</p>}

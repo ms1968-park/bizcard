@@ -12,6 +12,9 @@ export default function AuthShell({ title, children }: { title: string; children
       </Link>
       <h1 className="text-center text-2xl font-bold text-ink">{title}</h1>
       {children}
+      <Link href="/privacy" className="text-center text-sm text-ink-faint hover:underline">
+        개인정보처리방침
+      </Link>
     </main>
   );
 }

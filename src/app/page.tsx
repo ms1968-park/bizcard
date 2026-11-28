@@ -18,6 +18,9 @@ export default function Home() {
           로그인
         </Link>
       </div>
+      <Link href="/privacy" className="text-sm text-ink-faint hover:underline">
+        개인정보처리방침
+      </Link>
     </main>
   );
 }
