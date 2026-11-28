@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { AuthState } from "@/app/auth-actions";
+import GoogleButton from "@/components/GoogleButton";
 
 type Props = {
   mode: "login" | "signup";
@@ -30,6 +31,13 @@ export default function AuthForm({ mode, action }: Props) {
   }
 
   return (
+    <div className="flex flex-col gap-5">
+      <GoogleButton />
+      <div className="flex items-center gap-3 text-sm text-ink-faint">
+        <span className="h-px flex-1 bg-latte" />
+        또는 이메일로
+        <span className="h-px flex-1 bg-latte" />
+      </div>
     <form action={formAction} className="flex flex-col gap-3">
       <input name="email" type="email" required autoComplete="email" placeholder="이메일" className={inputClass} />
       <input
@@ -78,5 +86,6 @@ export default function AuthForm({ mode, action }: Props) {
         </Link>
       </p>
     </form>
+    </div>
   );
 }

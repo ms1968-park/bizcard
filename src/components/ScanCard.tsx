@@ -8,6 +8,7 @@ import { emptyCardFields, type CardFields } from "@/lib/card-fields";
 import { rotateBlob, warpCard } from "@/lib/perspective";
 import CornerAdjuster from "@/components/CornerAdjuster";
 import { detectCardCorners, stopOpenCV, warmUpOpenCV } from "@/lib/opencv";
+import { imageAspect, orientByText } from "@/lib/orientation";
 
 type Step = "pick" | "reading" | "adjust" | "preview" | "edit";
 
@@ -188,12 +189,26 @@ function ScanFlow() {
       setNotice("AI가 읽은 내용이에요. 틀린 곳이 있으면 고쳐 주세요.");
     }
 
-    // 3) 다음 화면: 사진마다 꼭짓점 맞추기 (OpenCV가 찾은 위치에서 시작)
+    // 3) 방향 맞추기: Gemini가 알려 준 "글자가 서는 각도"로 윗변을 정한다
+    const oriented = await Promise.all(
+      list.map(async (side, i) => {
+        const corners = detected[i];
+        const rotation = "rotations" in result ? result.rotations[i] : null;
+        if (!corners || rotation === null || rotation === undefined) return corners ?? DEFAULT_CORNERS;
+        try {
+          return orientByText(corners, rotation, await imageAspect(side.file));
+        } catch {
+          return corners;
+        }
+      }),
+    );
+
+    // 4) 다음 화면: 사진마다 꼭짓점 맞추기 (OpenCV가 찾은 위치에서 시작)
     setSides(
       list.map((side, i) => ({
         ...side,
         url: URL.createObjectURL(side.file),
-        corners: detected[i] ?? DEFAULT_CORNERS,
+        corners: oriented[i],
       })),
     );
     setSideIndex(0);
