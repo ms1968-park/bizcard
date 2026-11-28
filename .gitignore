@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#secret files
+client_secret_863775937917-q57atdkhjcllo0tsf4odou9jrpg50rtf.apps.googleusercontent.com.json
+
+# 꼭짓점 감지 테스트용 사진 (GitHub에 올리지 않음)
+/test-photos/
+/Claude outputs/

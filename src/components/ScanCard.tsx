@@ -7,7 +7,7 @@ import CardForm from "@/components/CardForm";
 import { emptyCardFields, type CardFields } from "@/lib/card-fields";
 import { rotateBlob, warpCard } from "@/lib/perspective";
 import CornerAdjuster from "@/components/CornerAdjuster";
-import { detectCardCorners, stopOpenCV, warmUpOpenCV } from "@/lib/opencv";
+import { detectCardCorners, refineCardCorners, stopOpenCV, warmUpOpenCV } from "@/lib/opencv";
 import { imageAspect, orientByText } from "@/lib/orientation";
 
 type Step = "pick" | "reading" | "adjust" | "preview" | "edit";
@@ -189,10 +189,23 @@ function ScanFlow() {
       setNotice("AI가 읽은 내용이에요. 틀린 곳이 있으면 고쳐 주세요.");
     }
 
-    // 3) 방향 맞추기: Gemini가 알려 준 "글자가 서는 각도"로 윗변을 정한다
+    // 3) 꼭짓점 확인: Gemini가 알려 준 "명함이 있는 대략적인 상자"와 비교해서 엉뚱한 곳이면 다시 찾기
+    const refined = await Promise.all(
+      list.map(async (side, i) => {
+        const box = "boxes" in result ? result.boxes[i] : null;
+        if (!box) return detected[i];
+        const again = await Promise.race([
+          refineCardCorners(side.file, detected[i], box).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20_000)),
+        ]);
+        return again ?? detected[i];
+      }),
+    );
+
+    // 4) 방향 맞추기: Gemini가 알려 준 "글자가 서는 각도"로 윗변을 정한다
     const oriented = await Promise.all(
       list.map(async (side, i) => {
-        const corners = detected[i];
+        const corners = refined[i];
         const rotation = "rotations" in result ? result.rotations[i] : null;
         if (!corners || rotation === null || rotation === undefined) return corners ?? DEFAULT_CORNERS;
         try {
@@ -203,7 +216,7 @@ function ScanFlow() {
       }),
     );
 
-    // 4) 다음 화면: 사진마다 꼭짓점 맞추기 (OpenCV가 찾은 위치에서 시작)
+    // 5) 다음 화면: 사진마다 꼭짓점 맞추기 (OpenCV가 찾은 위치에서 시작)
     setSides(
       list.map((side, i) => ({
         ...side,

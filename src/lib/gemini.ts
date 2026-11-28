@@ -16,8 +16,13 @@ const schema = {
       description: "보낸 사진 순서대로, 각 사진을 시계 방향으로 몇 도(0~359) 돌려야 명함 글자가 똑바로 서는지",
       items: { type: "integer" },
     },
+    boxes: {
+      type: "array",
+      description: "보낸 사진 순서대로, 사진 속 명함 전체를 감싸는 상자 [ymin, xmin, ymax, xmax] (0~1000)",
+      items: { type: "array", items: { type: "integer" } },
+    },
   },
-  required: [...CARD_FIELDS.map((f) => f.key), "rotations"],
+  required: [...CARD_FIELDS.map((f) => f.key), "rotations", "boxes"],
 };
 
 const PROMPT = `다음 이미지는 한 사람의 명함입니다. (앞면, 그리고 있다면 뒷면)
@@ -34,12 +39,15 @@ const PROMPT = `다음 이미지는 한 사람의 명함입니다. (앞면, 그�
 그리고 rotations 에는 보낸 사진마다 하나씩, 순서대로 숫자를 적어 주세요.
 - 그 사진을 시계 방향으로 몇 도 돌리면 명함의 가장 큰 글자(이름, 회사명)가 똑바로 읽히는지, 0~359 사이의 정수.
 - 예: 이미 똑바로면 0, 글자가 오른쪽으로 누워 있으면(위쪽이 사진의 오른쪽) 270, 왼쪽으로 누워 있으면 90, 거꾸로면 180.
-- 비스듬하면 가장 가까운 각도로 (예: 30, 315).`;
+- 비스듬하면 가장 가까운 각도로 (예: 30, 315).
+
+boxes 에는 보낸 사진마다 하나씩, 사진 속 명함 종이 전체(가장자리까지)를 감싸는 상자를 [ymin, xmin, ymax, xmax] 형식으로 적어 주세요.
+- 사진 크기를 0~1000으로 본 좌표의 정수.`;
 
 // 명함 사진(들)을 받아서 칸별 정보를 돌려준다.
 export async function extractCardInfo(
   images: { data: string; mimeType: string }[],
-): Promise<{ fields: CardFields; rotations: (number | null)[] }> {
+): Promise<{ fields: CardFields; rotations: (number | null)[]; boxes: (number[] | null)[] }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY 가 설정되지 않았어요.");
 
@@ -52,7 +60,10 @@ export async function extractCardInfo(
   });
   console.log(`[gemini] ${MODEL} 글자 읽기 ${((Date.now() - started) / 1000).toFixed(1)}초`);
 
-  const parsed = JSON.parse(response.text ?? "{}") as Partial<CardFields> & { rotations?: unknown };
+  const parsed = JSON.parse(response.text ?? "{}") as Partial<CardFields> & {
+    rotations?: unknown;
+    boxes?: unknown;
+  };
   const fields = emptyCardFields();
   for (const f of CARD_FIELDS) {
     const v = parsed[f.key];
@@ -67,5 +78,16 @@ export async function extractCardInfo(
   });
   console.log("[gemini] rotations:", JSON.stringify(rotations));
 
-  return { fields, rotations };
+  // 사진마다 "명함이 있는 대략적인 상자" [위, 왼쪽, 아래, 오른쪽] (0~1 비율, 이상하면 null)
+  const rawBoxes = Array.isArray(parsed.boxes) ? parsed.boxes : [];
+  const boxes = images.map((_, i) => {
+    const b = rawBoxes[i];
+    if (!Array.isArray(b) || b.length !== 4 || !b.every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+    const [y0, x0, y1, x1] = (b as number[]).map((v) => Math.min(1, Math.max(0, v / 1000)));
+    const area = (y1 - y0) * (x1 - x0);
+    return y1 > y0 && x1 > x0 && area > 0.02 && area < 0.98 ? [y0, x0, y1, x1] : null;
+  });
+  console.log("[gemini] boxes:", JSON.stringify(rawBoxes));
+
+  return { fields, rotations, boxes };
 }

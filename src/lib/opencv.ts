@@ -35,20 +35,37 @@ export function stopOpenCV() {
   pending.clear();
 }
 
-// 사진 → 명함 꼭짓점 4개 [y, x] (0~1 비율 좌표), 못 찾으면 null
-export async function detectCardCorners(file: Blob): Promise<number[][] | null> {
+// 사진을 긴 변 800px로 줄여서 픽셀 데이터로 (빠르게 계산하려고)
+async function toImageData(file: Blob): Promise<ImageData> {
   const bitmap = await createImageBitmap(file);
-  const scale = 800 / Math.max(bitmap.width, bitmap.height); // 긴 변 800px로 줄여서 빠르게
+  const scale = 800 / Math.max(bitmap.width, bitmap.height);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
 
+function ask(imageData: ImageData, refine?: { corners: number[][] | null; box: number[] }) {
   const id = ++seq;
-  return new Promise((resolve) => {
+  return new Promise<number[][] | null>((resolve) => {
     pending.set(id, resolve);
-    getWorker().postMessage({ id, imageData }, [imageData.data.buffer]);
+    getWorker().postMessage({ id, imageData, refine }, [imageData.data.buffer]);
   });
+}
+
+// 1단계: 사진 → 명함 꼭짓점 4개 [y, x] (0~1 비율 좌표), 못 찾으면 null
+export async function detectCardCorners(file: Blob): Promise<number[][] | null> {
+  return ask(await toImageData(file));
+}
+
+// 2단계: Gemini가 알려 준 대략적인 상자 [위, 왼쪽, 아래, 오른쪽](0~1)로 1단계 결과를 확인·보정
+export async function refineCardCorners(
+  file: Blob,
+  corners: number[][] | null,
+  box: number[],
+): Promise<number[][] | null> {
+  return ask(await toImageData(file), { corners, box });
 }

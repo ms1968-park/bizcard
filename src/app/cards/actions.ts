@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { extractCardInfo } from "@/lib/gemini";
 import { CARD_FIELDS, type CardFields } from "@/lib/card-fields";
 
-export type ExtractResult = { fields: CardFields; rotations: (number | null)[] } | { error: string };
+export type ExtractResult =
+  | { fields: CardFields; rotations: (number | null)[]; boxes: (number[] | null)[] }
+  | { error: string };
 
 // ① 보관함에 올린 명함 사진을 AI에게 보여 주고, 칸별 정보를 받아 온다.
 export async function extractCard(imagePaths: string[]): Promise<ExtractResult> {
@@ -40,8 +42,8 @@ export async function extractCard(imagePaths: string[]): Promise<ExtractResult> 
         return { data: buffer.toString("base64"), mimeType: data.type || "image/jpeg" };
       }),
     );
-    const { fields, rotations } = await extractCardInfo(images);
-    return { fields, rotations };
+    const { fields, rotations, boxes } = await extractCardInfo(images);
+    return { fields, rotations, boxes };
   } catch (e) {
     console.error("extractCard failed:", e);
     return { error: "AI가 명함을 읽지 못했어요. 직접 입력하거나 다시 시도해 주세요." };
